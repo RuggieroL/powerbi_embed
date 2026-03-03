@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Power BI Embed — Report & Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+  <!-- SDK powerbi-client -->
+  <script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.23.9/dist/powerbi.js"></script>
+
+  <style>
+    :root { --border:#ddd; }
+    body { font-family: system-ui, Arial, sans-serif; margin: 20px; }
+    h1 { margin-top: 0; }
+    form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 1040px; }
+    fieldset { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    legend { padding: 0 6px; color: #333; font-weight: 600; }
+    label { display: flex; flex-direction: column; font-size: 14px; }
+    input, select { padding: 8px; font-size: 14px; }
+    #actions { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; }
+    button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    #embedContainer { margin-top: 16px; width: 100%; height: 80vh; border: 1px solid var(--border); border-radius: 8px; }
+    .row { grid-column: 1 / -1; }
+    .hint { font-size: 12px; color: #666; }
+    .error { color: #b00020; white-space: pre-wrap; margin-top: 10px; }
+    .inline { flex-direction: row; gap: 8px; align-items: center; }
+    .muted { color: #555; font-size: 13px; }
+    .disabled { opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <h1>Power BI Embed — Report & Dashboard</h1>
+
+  <form id="embedForm">
+    <!-- (1) Workspaces -->
+    <fieldset>
+      <legend>1) Workspace</legend>
+      <label>
+        Load workspaces
+        <button type="button" id="btnLoadWs">Load</button>
+      </label>
+
+      <label>
+        Select workspace
+        <select id="workspaceSelect">
+          <option value="">— select a workspace —</option>
+        </select>
+      </label>
+
+      <label>
+        Workspace ID (groupId)
+        <input type="text" id="workspaceId" required placeholder="GUID del workspace"/>
+      </label>
+    </fieldset>
+
+    <!-- (2) Content/Type -->
+    <fieldset>
+      <legend>2) Content & Type</legend>
+      <label>
+        Load workspace content
+        <button type="button" id="btnLoadArtifacts">Load content</button>
+      </label>
+
+      <label>
+        Artifact type
+        <select id="artifactType">
+          <option value="report">Report</option>
+          <option value="dashboard">Dashboard</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <!-- (3) Artifact selection -->
+    <fieldset>
+      <legend>3) Artifact</legend>
+
+      <!-- Report -->
+      <label id="selLabel1">
+        Select report
+        <select id="reportSelect">
+          <option value="">— select a report —</option>
+        </select>
+      </label>
+
+      <label id="idLabel1">
+        Report ID
+        <input type="text" id="reportId" placeholder="GUID del report"/>
+      </label>
+
+      <!-- Dashboard -->
+      <label id="selLabel2" style="display:none;">
+        Select dashboard
+        <select id="dashboardSelect">
+          <option value="">— select a dashboard —</option>
+        </select>
+      </label>
+
+      <label id="idLabel2" style="display:none;">
+        Dashboard ID
+        <input type="text" id="dashboardId" placeholder="GUID della dashboard"/>
+      </label>
+    </fieldset> 
+
+    <!-- Report pages -->
+    <fieldset id="reportPageBox">
+      <legend>Report pages</legend>
+
+      <label class="row">
+        Select page
+        <select id="pageSelect">
+          <option value="">— Show all pages —</option>
+        </select>
+        <span class="hint">Se scegli una pagina, il report si apre su quella; con “Show all pages” partiamo dalla <b>prima</b> e lasciamo visibile la navigazione.</span>
+      </label>
+
+      <label class="row inline">
+        <input type="checkbox" id="lockPage"/>
+        <span class="muted"><strong>Lock to selected page (hide tabs)</strong> — nasconde la navigazione delle pagine</span>
+      </label>
+    </fieldset>
+
+    <!-- RLS -->
+    <fieldset>
+      <legend>RLS</legend>
+      <label class="row inline">
+        <input type="checkbox" id="ignoreRls" />
+        <span class="muted"><strong>Ignore RLS (show all data)</strong></span>
+      </label>
+
+      <label class="row">
+        Username (RLS dinamico)
+        <input type="text" id="username" placeholder="es. utente@dominio.com"/>
+        <span class="hint">Per Report con RLS attivo serve; per Dashboard è opzionale (fallback EI).</span>
+      </label>
+
+      <label class="row">
+        Roles (lista, separati da virgola)
+        <input type="text" id="roles" placeholder="es. Resellers, Sales_East"/>
+        <span class="hint">Per Report con RLS attivo specifica i ruoli; per Dashboard non è necessario in bypass.</span>
+      </label>
+    </fieldset>
+
+    <div id="actions">
+      <button type="submit">Embed</button>
+      <button type="button" id="clear">Clear</button>
+    </div>
+  </form>
+
+  <div id="msg" class="error"></div>
+  <div id="embedContainer"></div>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const apiBase = window.location.origin;
+
+    const form = $("#embedForm"), msg = $("#msg"), container = $("#embedContainer");
+
+    // Workspace
+    const workspaceIdEl = $("#workspaceId"), workspaceSel = $("#workspaceSelect");
+    const btnLoadWs = $("#btnLoadWs"), btnLoadArtifacts = $("#btnLoadArtifacts");
+
+    // Artifact type + selects
+    const artifactSel = $("#artifactType");
+    const reportSel = $("#reportSelect"), dashboardSel = $("#dashboardSelect");
+    const reportIdEl = $("#reportId"), dashboardIdEl = $("#dashboardId");
+    const idLabel1 = $("#idLabel1"), idLabel2 = $("#idLabel2");
+    const selLabel1 = $("#selLabel1"), selLabel2 = $("#selLabel2");
+
+    // Pages / RLS
+    const pageBox = $("#reportPageBox"), pageSel = $("#pageSelect"), lockPageCb = $("#lockPage");
+    const ignoreRlsCb = $("#ignoreRls"), usernameEl = $("#username"), rolesEl = $("#roles");
+
+    let cachedWorkspaces = [], cachedReports = [], cachedDashboards = [];
+    let cachedPages = [];   // {name, displayName, order}
+    let firstPageName = ""; // determinata da cachedPages[0]
+
+    function clearContainer(){ try{ window.powerbi.reset(container);}catch(_){} container.innerHTML=""; msg.textContent=""; }
+    function csvToList(s){ return (s||'').split(',').map(x=>x.trim()).filter(Boolean); }
+
+    function syncUI(){
+      const isDash = artifactSel.value === "dashboard";
+      // mostra/occulta blocchi per tipo
+      selLabel1.style.display = isDash ? "none" : "";
+      idLabel1.style.display  = isDash ? "none" : "";
+      selLabel2.style.display = isDash ? "" : "none";
+      idLabel2.style.display  = isDash ? "" : "none";
+      pageBox.style.display   = isDash ? "none" : "";  // Se dashboard, non mostriamo le pagine
+
+      // RLS: se bypass su report, i campi non servono
+      const off = ignoreRlsCb.checked;
+      usernameEl.disabled = off && !isDash;
+      rolesEl.disabled    = off && !isDash;
+      usernameEl.classList.toggle("disabled", usernameEl.disabled);
+      rolesEl.classList.toggle("disabled", rolesEl.disabled);
+    }
+    artifactSel.addEventListener("change", syncUI);
+    ignoreRlsCb.addEventListener("change", syncUI);
+
+    async function loadWorkspaces(){
+      msg.textContent = "";
+      workspaceSel.innerHTML = `<option value="">— select a workspace —</option>`;
+      try{
+        const r = await fetch(`${apiBase}/api/workspaces`);
+        const data = await r.json();
+        if(!r.ok){ msg.textContent = `${data.error || "Errore"}\n${data.details || ""}`; return; }
+        cachedWorkspaces = data.workspaces || [];
+        cachedWorkspaces.forEach(w=>{
+          const opt = document.createElement("option");
+          opt.value = w.id;
+          opt.textContent = w.name || w.id;
+          workspaceSel.appendChild(opt);
+        });
+      }catch(err){ console.error(err); msg.textContent = String(err); }
+    }
+    btnLoadWs.addEventListener("click", loadWorkspaces);
+    workspaceSel.addEventListener("change", ()=>{
+      workspaceIdEl.value = workspaceSel.value || "";
+      resetArtifactsAndPages();
+    });
+
+    function resetArtifactsAndPages(){
+      reportSel.innerHTML = `<option value="">— select a report —</option>`;
+      dashboardSel.innerHTML = `<option value="">— select a dashboard —</option>`;
+      pageSel.innerHTML = `<option value="">— Show all pages —</option>`;
+      cachedReports=[]; cachedDashboards=[]; cachedPages=[]; firstPageName="";
+      reportIdEl.value=""; dashboardIdEl.value="";
+    }
+
+    async function loadArtifacts(){
+      msg.textContent="";
+      const workspaceId = workspaceIdEl.value.trim();
+      if(!workspaceId){ msg.textContent="Seleziona un workspace."; return; }
+      resetArtifactsAndPages();
+      try{
+        const url = `${apiBase}/api/list-artifacts?workspaceId=${encodeURIComponent(workspaceId)}`;
+        const r = await fetch(url);
+        const data = await r.json();
+        if(!r.ok){ msg.textContent = `${data.error || "Errore"}\n${data.details || ""}`; return; }
+
+        cachedReports = data.reports || [];
+        cachedDashboards = data.dashboards || [];
+
+        for(const it of cachedReports){
+          const opt = document.createElement("option");
+          opt.value = it.id;
+          opt.textContent = it.name || it.id;
+          reportSel.appendChild(opt);
+        }
+        for(const it of cachedDashboards){
+          const opt = document.createElement("option");
+          opt.value = it.id;
+          opt.textContent = it.displayName || it.id;
+          dashboardSel.appendChild(opt);
+        }
+      }catch(err){ console.error(err); msg.textContent = String(err); }
+    }
+    btnLoadArtifacts.addEventListener("click", loadArtifacts);
+
+    // Carica pagine quando selezioni un report
+    reportSel.addEventListener("change", ()=> {
+      reportIdEl.value = reportSel.value || "";
+      loadReportPages(workspaceIdEl.value.trim(), reportSel.value);
+    });
+    // Carica pagine quando scrivi manualmente un reportId
+    reportIdEl.addEventListener("change", ()=> {
+      const ws = workspaceIdEl.value.trim();
+      const rid = reportIdEl.value.trim();
+      if(ws && rid) loadReportPages(ws, rid);
+    });
+
+    async function loadReportPages(workspaceId, reportId){
+      pageSel.innerHTML = `<option value="">— Show all pages —</option>`;
+      cachedPages = []; firstPageName = "";
+      if(!workspaceId || !reportId) return;
+      try{
+        const r = await fetch(`${apiBase}/api/report/pages?workspaceId=${encodeURIComponent(workspaceId)}&reportId=${encodeURIComponent(reportId)}`);
+        const data = await r.json();
+        if(!r.ok){ console.warn("pages error:", data); return; }
+        cachedPages = data.pages || [];
+        if (cachedPages.length > 0) {
+          firstPageName = cachedPages[0].name || "";
+        }
+        cachedPages.forEach(p=>{
+          const opt = document.createElement("option");
+          opt.value = p.name;  // es. ReportSection0
+          opt.textContent = p.displayName || p.name;
+          pageSel.appendChild(opt);
+        });
+      }catch(err){ console.warn("pages fetch failed:", err); }
+    }
+
+    // Dashboard dropdown -> ID
+    $("#dashboardSelect").addEventListener("change", ()=>{
+      dashboardIdEl.value = $("#dashboardSelect").value || "";
+    });
+
+    $("#clear").addEventListener("click", ()=>{
+      form.reset();
+      localStorage.removeItem("pbiEmbedForm2");
+      clearContainer(); syncUI(); resetArtifactsAndPages();
+      workspaceSel.selectedIndex = 0;
+    });
+
+    // Submit = Embed
+    form.addEventListener("submit", async (e)=>{
+      e.preventDefault(); clearContainer();
+
+      const artifactType = $("#artifactType").value;
+      const workspaceId  = $("#workspaceId").value.trim();
+      const reportId     = $("#reportId").value.trim();
+      const dashboardId  = $("#dashboardId").value.trim();
+      const ignoreRls    = $("#ignoreRls").checked;
+      const username     = $("#username").value.trim();
+      const roles        = csvToList($("#roles").value);
+      let   pageName     = $("#pageSelect").value.trim();  // "" => Show all
+
+      if(!workspaceId){ msg.textContent="Seleziona un workspace."; return; }
+      if(artifactType==="report" && !reportId){ msg.textContent="Seleziona o compila reportId."; return; }
+      if(artifactType==="dashboard" && !dashboardId){ msg.textContent="Seleziona o compila dashboardId."; return; }
+      if(artifactType==="report" && !ignoreRls){
+        if(!username || roles.length===0){ msg.textContent="Report con RLS attivo: specifica username e almeno un ruolo."; return; }
+      }
+
+      // NEW: se “Show all pages”, imposta la prima pagina come default
+      if (artifactType === "report" && !pageName) {
+        // Se non abbiamo cachedPages, ricarichiamo al volo
+        if (!firstPageName) {
+          await loadReportPages(workspaceId, reportId);
+        }
+        pageName = firstPageName || "";  // se ancora vuoto, non passeremo pageName
+      }
+
+      try{
+        const payload = { artifactType, workspaceId, ignoreRls, pageName: pageName || undefined };
+        if(artifactType==="report"){
+          payload.reportId = reportId;
+          if(!ignoreRls){ payload.username = username; payload.roles = roles; }
+          else { payload.username = username; }
+        }else{
+          payload.dashboardId = dashboardId;
+          if(!ignoreRls){ payload.username = username; payload.roles = roles; }
+          else { payload.username = username; }
+        }
+
+        const res = await fetch(`${apiBase}/api/generate-token`, {
+          method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if(!res.ok){
+          const details = typeof data.details === "object" ? JSON.stringify(data.details, null, 2) : (data.details || "");
+          msg.textContent = `${data.error || "Errore"}\n${details}`;
+          return;
+        }
+
+        const models = window["powerbi-client"].models;
+        const isReport = data.artifactType === "report";
+
+        // page/tabs settings
+        const lockTabsSettings = (lockPageCb.checked && pageName)
+          ? { panes: { pageNavigation: { visible: false }, filters: { visible: true, expanded: false } },
+              navContentPaneEnabled: false }
+          : { panes: { pageNavigation: { visible: true }, filters: { visible: true, expanded: false } },
+              navContentPaneEnabled: true };
+
+        const config = {
+          type: data.artifactType,
+          id: isReport ? data.reportId : data.dashboardId,
+          embedUrl: data.embedUrl,
+          accessToken: data.accessToken,
+          tokenType: models.TokenType.Embed,
+          ...(isReport
+            ? { ...(pageName ? { pageName } : {}), settings: lockTabsSettings }
+            : { pageView:'fitToWidth' })
+        };
+
+        const pbi = window.powerbi;
+        pbi.reset(container);
+        pbi.embed(container, config);
+
+        // persist
+        const persisted = {
+          artifactType, workspaceId, reportId, dashboardId,
+          username, roles: roles.join(", "), ignoreRls
+        };
+        localStorage.setItem("pbiEmbedForm2", JSON.stringify(persisted));
+
+      }catch(err){
+        console.error(err); msg.textContent = String(err);
+      }
+    });
+
+    // Init
+    document.addEventListener("DOMContentLoaded", async ()=>{
+      // Precarica defaults e UI
+      try{
+        const r = await fetch(`${apiBase}/api/defaults`);
+        if(r.ok){
+          const d = await r.json();
+          if(d.workspaceId) workspaceIdEl.value = d.workspaceId;
+          if(d.reportId)    reportIdEl.value    = d.reportId;
+          if(d.dashboardId) dashboardIdEl.value = d.dashboardId;
+          if(d.username)    usernameEl.value    = d.username;
+          if(Array.isArray(d.roles)) rolesEl.value = d.roles.join(", ");
+          if(typeof d.ignoreRls === "boolean") ignoreRlsCb.checked = d.ignoreRls;
+        }
+      }catch(_) {}
+      const saved = JSON.parse(localStorage.getItem("pbiEmbedForm2") || "{}");
+      if(saved.workspaceId) workspaceIdEl.value = saved.workspaceId;
+      if(saved.reportId)    reportIdEl.value    = saved.reportId;
+      if(saved.dashboardId) dashboardIdEl.value = saved.dashboardId;
+      if(saved.username)    usernameEl.value    = saved.username;
+      if(saved.roles)       rolesEl.value       = saved.roles;
+      if(typeof saved.ignoreRls === "boolean") ignoreRlsCb.checked = saved.ignoreRls;
+      if(saved.artifactType) artifactSel.value  = saved.artifactType;
+
+      syncUI();
+      // carica workspaces on-load (puoi spostarlo su click se preferisci)
+      btnLoadWs.click();
+
+      // se abbiamo già workspace+report, carica pagine (per poter avere firstPageName)
+      const ws = workspaceIdEl.value.trim();
+      const rid = reportIdEl.value.trim();
+      if(ws && rid) await loadReportPages(ws, rid);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Power BI Embedded Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.22.0/dist/powerbi.min.js"></script>
+    <style>
+        #reportContainer {
+            height: 90vh;
+            width: 100%;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h2>Embedded Power BI Report</h2>
+    <div id="reportContainer"></div>
+
+    <script>
+        async function loadReport() {
+            try {
+                // Fetch embed info from backend
+                const res = await fetch("/getEmbedInfo");
+                const data = await res.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Power BI embed configuration
+                const models = window['powerbi-client'].models;
+                const embedConfig = {
+                    type: 'report',
+                    id: data.reportId,
+                    embedUrl: data.embedUrl,
+                    accessToken: data.embedToken,
+                    tokenType: models.TokenType.Embed,
+                    settings: {
+                        panes: {
+                            filters: { visible: false },
+                            pageNavigation: { visible: true }
+                        }
+                    }
+                };
+
+                // Embed the report
+                const reportContainer = document.getElementById('reportContainer');
+                const powerbi = new window['powerbi-client'].service.Service(
+                    window['powerbi-client'].factories.hpmFactory,
+                    window['powerbi-client'].factories.wpmpFactory,
+                    window['powerbi-client'].factories.routerFactory
+                );
+                powerbi.embed(reportContainer, embedConfig);
+
+            } catch (err) {
+                console.error("Error loading report:", err);
+                document.getElementById('reportContainer').innerHTML = `<p style="color:red;">${err.message}</p>`;
+            }
+        }
+
+        loadReport();
+    </script>
+</body>
+</html>
