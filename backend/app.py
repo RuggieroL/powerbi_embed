@@ -9,6 +9,9 @@ import requests
 from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 from msal import ConfidentialClientApplication
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
 
 # ====== Carica .env dalla root del progetto ======
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -19,7 +22,7 @@ POWER_BI_API = "https://api.powerbi.com/v1.0/myorg"
 # ====== Credenziali SP da .env ======
 TENANT_ID     = os.getenv("AZURE_TENANT_ID")
 CLIENT_ID     = os.getenv("AZURE_CLIENT_ID")
-CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET")
+#CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET")
 
 # ====== Default PBI (override possibili via POST) ======
 DEFAULT_WORKSPACE_ID = os.getenv("PBI_WORKSPACE_ID")
@@ -30,6 +33,16 @@ DEFAULT_DASHBOARD_ID = os.getenv("PBI_DASHBOARD_ID")
 DEFAULT_RLS_USERNAME = os.getenv("PBI_RLS_USERNAME", "")
 RLS_ROLES_RAW        = os.getenv("PBI_RLS_ROLES", "")
 BYPASS_ROLE          = os.getenv("PBI_RLS_BYPASS_ROLE", "AllData")  # ruolo senza filtri
+
+#Carica il client secret da keyvault
+
+VAULT_URL = "https://pvlab-ea012e-keyvault.vault.azure.net/"
+SECRET_NAME = "AZURE-CLIENT-SECRET"
+
+cred = DefaultAzureCredential()
+client = SecretClient(vault_url=VAULT_URL, credential=cred)
+secret_value = client.get_secret(SECRET_NAME).value
+CLIENT_SECRET = secret_value
 
 # ====== Timeout per le chiamate HTTP (connessione, lettura) ======
 REQUEST_TIMEOUT = (5, 30)
