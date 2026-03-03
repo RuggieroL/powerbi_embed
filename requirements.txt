@@ -1,0 +1,20 @@
+# === Web framework ===
+flask
+flask-cors
+
+# === Power BI / Authentication ===
+msal
+requests
+
+# === Azure Key Vault (SDK ufficiale) ===
+azure-identity
+azure-keyvault-secrets
+
+# === Env management ===
+python-dotenv
+
+# === (Opzionale ma consigliato) Logging strutturato ===
+rich
+
+# === (Opzionale) Utility per sicurezza ===
+cryptography
