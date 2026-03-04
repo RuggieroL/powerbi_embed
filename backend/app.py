@@ -22,7 +22,7 @@ POWER_BI_API = "https://api.powerbi.com/v1.0/myorg"
 # ====== Credenziali SP da .env ======
 TENANT_ID     = os.getenv("AZURE_TENANT_ID")
 CLIENT_ID     = os.getenv("AZURE_CLIENT_ID")
-#CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET")
+CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET")
 
 # ====== Default PBI (override possibili via POST) ======
 DEFAULT_WORKSPACE_ID = os.getenv("PBI_WORKSPACE_ID")
@@ -39,10 +39,15 @@ BYPASS_ROLE          = os.getenv("PBI_RLS_BYPASS_ROLE", "AllData")  # ruolo senz
 VAULT_URL = "https://pvlab-ea012e-keyvault.vault.azure.net/"
 SECRET_NAME = "AZURE-CLIENT-SECRET"
 
-cred = DefaultAzureCredential()
-client = SecretClient(vault_url=VAULT_URL, credential=cred)
+credential = DefaultAzureCredential(
+    exclude_interactive_browser_credential=True,  # optional but recommended
+    exclude_shared_token_cache_credential=True    # also recommended
+)
+
+client = SecretClient(vault_url=VAULT_URL, credential=credential)
 secret_value = client.get_secret(SECRET_NAME).value
-CLIENT_SECRET = secret_value
+
+#CLIENT_SECRET = secret_value
 
 # ====== Timeout per le chiamate HTTP (connessione, lettura) ======
 REQUEST_TIMEOUT = (5, 30)
