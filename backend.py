@@ -15,8 +15,8 @@ app = Flask(__name__)
 TENANT_ID = os.getenv("AZURE_TENANT_ID", "your-tenant-id")
 CLIENT_ID = os.getenv("AZURE_CLIENT_ID", "your-client-id")
 CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET", "your-client-secret")
-WORKSPACE_ID = os.getenv("PBI_WORKSPACE_ID", "your-workspace-id")
-REPORT_ID = os.getenv("PBI_REPORT_ID", "your-report-id")
+WORKSPACE_ID = os.getenv("PBI_NORLS_WORKSPACE_ID", "your-workspace-id")
+REPORT_ID = os.getenv("PBI_NORLS_REPORT_ID", "your-report-id")
 
 
 AUTHORITY_URL = f"https://login.microsoftonline.com/{TENANT_ID}"
